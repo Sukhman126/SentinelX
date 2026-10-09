@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentinelX — Project</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  .page-wrap{ max-width: 1200px; margin: 0 auto; padding: 24px 24px 60px; }
+  .page-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 20px; flex-wrap:wrap; gap:12px; }
+  .back-link{ font-family: var(--font-mono); font-size:12.5px; color:var(--text-muted); }
+  .project-title{ font-size: 20px; }
+  .project-sub{ color: var(--text-muted); font-size: 13px; }
+  .actions-row{ display:flex; gap:10px; flex-wrap:wrap; }
+
+  .kpi-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi-card{ padding: 16px 18px; }
+  .kpi-card .label{ font-size: 11px; color: var(--text-muted); text-transform:uppercase; letter-spacing:.04em; font-family: var(--font-mono); }
+  .kpi-card .value{ font-size: 28px; font-family: var(--font-display); font-weight:700; margin-top:4px; }
+  .kpi-card.critical .value{ color: var(--critical); }
+
+  .charts-row{ display:grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .chart-box{ height: 260px; position:relative; }
+  .chart-box canvas{ max-height: 100%; }
+
+  .tabs{ display:flex; gap:4px; margin: 24px 0 14px; border-bottom:1px solid var(--panel-border-soft); }
+  .tab-btn{ background:none; border:none; border-bottom: 2px solid transparent; border-radius:0; padding:10px 14px; color:var(--text-muted); font-size:13.5px; }
+  .tab-btn.active{ color: var(--text); border-bottom-color: var(--signal); }
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; }
+
+  table{ width:100%; border-collapse: collapse; font-size: 13px; }
+  th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-muted); font-family:var(--font-mono); padding: 8px 10px; border-bottom: 1px solid var(--panel-border); }
+  td{ padding: 10px; border-bottom: 1px solid var(--panel-border-soft); vertical-align: top; }
+  tr:hover td{ background: rgba(255,255,255,0.015); }
+  .table-wrap{ overflow-x:auto; }
+
+  .filters-row{ display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+  .filters-row select, .filters-row input{ font-size: 13px; }
+
+  .risk-bar-track{ width:70px; height:6px; background:var(--panel-border); border-radius:4px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:8px; }
+  .risk-bar-fill{ height:100%; border-radius:4px; }
+
+  .vuln-title{ font-weight:500; }
+  .vuln-cve{ color: var(--signal); font-family: var(--font-mono); font-size:12px; }
+
+  .explain-btn{ padding: 5px 10px; font-size: 12px; }
+
+  /* Modal */
+  .modal-backdrop{ position:fixed; inset:0; background: rgba(5,8,16,0.75); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; }
+  .modal-backdrop.hidden{ display:none; }
+  .modal{ width: 560px; max-width:100%; max-height: 80vh; overflow-y:auto; }
+  .modal h3{ display:flex; justify-content:space-between; align-items:center; }
+  .modal-close{ background:none; border:none; color:var(--text-muted); font-size:18px; padding:2px 6px; }
+  .ai-content{ white-space: pre-wrap; font-size: 13.5px; line-height:1.6; color: var(--text); margin-top: 10px; }
+  .ai-content strong{ color: var(--signal); }
+
+  .import-zone{ border: 1.5px dashed var(--panel-border); border-radius: var(--radius); padding: 24px; text-align:center; color:var(--text-muted); font-size:13px; }
+  .import-zone.dragover{ border-color: var(--signal); background: rgba(63,214,201,0.04); }
+
+  .report-list-item{ display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom: 1px solid var(--panel-border-soft); font-size:13px; }
+
+  .status-select{ font-size:12px; padding:4px 8px; }
+</style>
+</head>
+<body>
+<div class="console-bar">
+  <span class="prompt">sentinelx://</span><span id="consolePath">project</span><span class="cursor"></span>
+</div>
+
+<div class="page-wrap">
+  <div class="page-head">
+    <div>
+      <a class="back-link" href="dashboard.html">&larr; all projects</a>
+      <h1 class="project-title" id="projectTitle">Loading…</h1>
+      <div class="project-sub" id="projectSub"></div>
+    </div>
+    <div class="actions-row">
+      <button id="importBtn">Import scan</button>
+      <button id="aiSummaryBtn">AI summary</button>
+      <button class="primary" id="reportBtn">Generate PDF report</button>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept=".xml,.json,.csv" class="hidden">
+
+  <div class="kpi-grid">
+    <div class="panel kpi-card"><div class="label">Total hosts</div><div class="value" id="kpiHosts">—</div></div>
+    <div class="panel kpi-card"><div class="label">Total vulnerabilities</div><div class="value" id="kpiVulns">—</div></div>
+    <div class="panel kpi-card critical"><div class="label">Critical findings</div><div class="value" id="kpiCritical">—</div></div>
+    <div class="panel kpi-card"><div class="label">Mean CVSS</div><div class="value" id="kpiCvss">—</div></div>
+  </div>
+
+  <div class="charts-row">
+    <div class="panel chart-box"><canvas id="severityChart"></canvas></div>
+    <div class="panel chart-box"><canvas id="serviceChart"></canvas></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="vulns">Vulnerabilities</button>
+    <button class="tab-btn" data-tab="hosts">Assets</button>
+    <button class="tab-btn" data-tab="reports">Scan history</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-vulns">
+    <div class="filters-row">
+      <select id="severityFilter">
+        <option value="">All severities</option>
+        <option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option>
+      </select>
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="open">Open</option><option value="mitigated">Mitigated</option>
+        <option value="accepted">Accepted</option><option value="false_positive">False positive</option>
+      </select>
+      <input id="searchFilter" placeholder="Search title or CVE…" style="min-width:220px;">
+    </div>
+    <div class="panel table-wrap">
+      <table>
+        <thead><tr>
+          <th>Finding</th><th>CVE</th><th>Severity</th><th>Risk score</th><th>Port</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody id="vulnTableBody"></tbody>
+      </table>
+      <div id="vulnEmpty" class="empty-state hidden"><h3>No findings</h3><p>Import a scan report to populate this project.</p></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-hosts">
+    <div class="panel table-wrap">
+      <table>
+        <thead><tr><th>IP address</th><th>Hostname</th><th>OS</th><th>Open ports</th><th>Findings</th></tr></thead>
+        <tbody id="hostTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-reports">
+    <div class="panel">
+      <div id="scanReportList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI Explain Modal -->
+<div class="modal-backdrop hidden" id="explainModal">
+  <div class="panel modal">
+    <h3><span id="explainTitle">CVE Explanation</span><button class="modal-close" data-close-modal>&times;</button></h3>
+    <div id="explainBody" class="ai-content">Loading…</div>
+  </div>
+</div>
+
+<!-- AI Summary Modal -->
+<div class="modal-backdrop hidden" id="summaryModal">
+  <div class="panel modal">
+    <h3><span>AI Report Summary</span><button class="modal-close" data-close-modal>&times;</button></h3>
+    <h4 style="margin-top:14px; color:var(--signal); font-size:13px; text-transform:uppercase; letter-spacing:.03em;">Executive summary</h4>
+    <div id="execSummaryBody" class="ai-content">Loading…</div>
+    <h4 style="margin-top:18px; color:var(--signal); font-size:13px; text-transform:uppercase; letter-spacing:.03em;">Technical summary</h4>
+    <div id="techSummaryBody" class="ai-content">Loading…</div>
+  </div>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script>
+  if (!Auth.isLoggedIn()) window.location.href = "index.html";
+
+  const params = new URLSearchParams(window.location.search);
+  const projectId = params.get("id");
+  if (!projectId) window.location.href = "dashboard.html";
+
+  let severityChart, serviceChart;
+  const SEVERITY_COLORS = {
+    Critical: "#FF5C6C", High: "#FF9B45", Medium: "#FFCB47", Low: "#4FA8E8", Informational: "#6B7A99",
+  };
+
+  async function loadProject() {
+    const project = await SentinelAPI.getProject(projectId);
+    document.getElementById("projectTitle").textContent = project.name;
+    document.getElementById("projectSub").textContent = project.client_name ? `Client: ${project.client_name}` : "";
+    document.getElementById("consolePath").textContent = `project/${project.id}`;
+    document.title = `SentinelX — ${project.name}`;
+  }
+
+  async function loadDashboard() {
+    const d = await SentinelAPI.dashboard(projectId);
+    document.getElementById("kpiHosts").textContent = d.total_hosts;
+    document.getElementById("kpiVulns").textContent = d.total_vulnerabilities;
+    document.getElementById("kpiCritical").textContent = d.critical_findings;
+    document.getElementById("kpiCvss").textContent = d.mean_cvss;
+
+    const sevLabels = Object.keys(d.severity_breakdown);
+    const sevData = Object.values(d.severity_breakdown);
+    const sevColors = sevLabels.map(l => SEVERITY_COLORS[l] || "#8891A8");
+
+    if (severityChart) severityChart.destroy();
+    severityChart = new Chart(document.getElementById("severityChart"), {
+      type: "doughnut",
+      data: { labels: sevLabels, datasets: [{ data: sevData, backgroundColor: sevColors, borderWidth: 0 }] },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "right", labels: { color: "#8A93AE", font: { family: "Inter", size: 11 }, boxWidth: 10 } },
+          title: { display: true, text: "Findings by severity", color: "#E7EAF3", font: { family: "Space Grotesk", size: 13 }, align: "start", padding: { bottom: 12 } },
+        },
+      },
+    });
+
+    const svcLabels = Object.keys(d.service_distribution);
+    const svcData = Object.values(d.service_distribution);
+    if (serviceChart) serviceChart.destroy();
+    serviceChart = new Chart(document.getElementById("serviceChart"), {
+      type: "bar",
+      data: { labels: svcLabels, datasets: [{ data: svcData, backgroundColor: "#3FD6C9", borderRadius: 4, maxBarThickness: 28 }] },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: "Exposed services", color: "#E7EAF3", font: { family: "Space Grotesk", size: 13 }, align: "start", padding: { bottom: 12 } },
+        },
+        scales: {
+          x: { ticks: { color: "#8A93AE", font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: "#8A93AE", font: { size: 11 }, stepSize: 1 }, grid: { color: "#1B2440" } },
+        },
+      },
+    });
+  }
+
+  function riskColor(score) {
+    if (score >= 9) return "#FF5C6C";
+    if (score >= 7) return "#FF9B45";
+    if (score >= 4) return "#FFCB47";
+    return "#4FA8E8";
+  }
+
+  async function loadVulns() {
+    const params = {};
+    const sev = document.getElementById("severityFilter").value;
+    const st = document.getElementById("statusFilter").value;
+    const search = document.getElementById("searchFilter").value.trim();
+    if (sev) params.severity = sev;
+    if (st) params.status_filter = st;
+    if (search) params.search = search;
+
+    const vulns = await SentinelAPI.listVulnerabilities(projectId, params);
+    const tbody = document.getElementById("vulnTableBody");
+    const empty = document.getElementById("vulnEmpty");
+    tbody.innerHTML = "";
+
+    if (vulns.length === 0) { empty.classList.remove("hidden"); return; }
+    empty.classList.add("hidden");
+
+    for (const v of vulns) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><div class="vuln-title">${escapeHtml(v.title)}</div></td>
+        <td class="vuln-cve">${v.cve_id || "—"}</td>
+        <td><span class="pill ${v.severity}">${v.severity}</span></td>
+        <td>
+          <span class="risk-bar-track"><span class="risk-bar-fill" style="width:${v.risk_score * 10}%; background:${riskColor(v.risk_score)};"></span></span>
+          <span class="mono">${v.risk_score}</span>
+        </td>
+        <td class="mono">${v.port || "—"}</td>
+        <td>
+          <select class="status-select" data-vuln-id="${v.id}">
+            ${["open","mitigated","accepted","false_positive"].map(s => `<option value="${s}" ${s===v.status?"selected":""}>${s.replace("_"," ")}</option>`).join("")}
+          </select>
+        </td>
+        <td><button class="explain-btn" data-cve="${v.cve_id || ''}" data-title="${escapeAttr(v.title)}">Ask AI</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll("select.status-select").forEach(sel => {
+      sel.addEventListener("change", async () => {
+        await SentinelAPI.updateVulnerability(sel.dataset.vulnId, { status: sel.value });
+        loadDashboard();
+      });
+    });
+    tbody.querySelectorAll(".explain-btn").forEach(btn => {
+      btn.addEventListener("click", () => openExplainModal(btn.dataset.cve, btn.dataset.title));
+    });
+  }
+
+  async function loadHosts() {
+    const hosts = await SentinelAPI.listHosts(projectId);
+    const tbody = document.getElementById("hostTableBody");
+    tbody.innerHTML = "";
+    for (const h of hosts) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="mono">${h.ip_address}</td>
+        <td>${h.hostname || "—"}</td>
+        <td>${h.os_name || "Unknown"}</td>
+        <td class="mono">${h.ports.map(p => p.port_number + "/" + p.protocol).join(", ") || "—"}</td>
+        <td>${h.vulnerabilities.length}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  async function loadReports() {
+    const reports = await SentinelAPI.listScanReports(projectId);
+    const container = document.getElementById("scanReportList");
+    if (reports.length === 0) {
+      container.innerHTML = `<div class="empty-state"><h3>No scans imported yet</h3><p>Use "Import scan" to upload Nmap XML, JSON, or CSV findings.</p></div>`;
+      return;
+    }
+    container.innerHTML = reports.map(r => `
+      <div class="report-list-item">
+        <span class="mono">${escapeHtml(r.filename)}</span>
+        <span style="color:var(--text-muted);">${r.source_type} · ${r.host_count} hosts · ${r.vuln_count} findings · ${new Date(r.uploaded_at).toLocaleString()}</span>
+      </div>
+    `).join("");
+  }
+
+  function escapeHtml(str) { const d = document.createElement("div"); d.textContent = str; return d.innerHTML; }
+  function escapeAttr(str) { return escapeHtml(str).replace(/"/g, "&quot;"); }
+
+  // Tabs
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+    });
+  });
+
+  // Filters
+  ["severityFilter", "statusFilter"].forEach(id => document.getElementById(id).addEventListener("change", loadVulns));
+  let searchTimeout;
+  document.getElementById("searchFilter").addEventListener("input", () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(loadVulns, 300);
+  });
+
+  // Import
+  const fileInput = document.getElementById("fileInput");
+  document.getElementById("importBtn").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", async () => {
+    if (!fileInput.files.length) return;
+    const btn = document.getElementById("importBtn");
+    btn.disabled = true; btn.textContent = "Importing…";
+    try {
+      const result = await SentinelAPI.importScan(projectId, fileInput.files[0]);
+      await Promise.all([loadDashboard(), loadVulns(), loadHosts(), loadReports()]);
+      alert(`Imported ${result.hosts_imported} hosts and ${result.vulnerabilities_found} findings from ${result.filename}.`);
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    } finally {
+      btn.disabled = false; btn.textContent = "Import scan";
+      fileInput.value = "";
+    }
+  });
+
+  // Report generation
+  document.getElementById("reportBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("reportBtn");
+    btn.disabled = true; btn.textContent = "Generating…";
+    try {
+      const { filename } = await SentinelAPI.generateReport(projectId);
+      window.open(SentinelAPI.reportDownloadUrl(projectId, filename), "_blank");
+      loadReports();
+    } catch (err) {
+      alert(`Report generation failed: ${err.message}`);
+    } finally {
+      btn.disabled = false; btn.textContent = "Generate PDF report";
+    }
+  });
+
+  // AI Explain modal
+  const explainModal = document.getElementById("explainModal");
+  async function openExplainModal(cveId, title) {
+    document.getElementById("explainTitle").textContent = cveId || title;
+    document.getElementById("explainBody").textContent = "Analyzing…";
+    explainModal.classList.remove("hidden");
+    try {
+      const { explanation } = await SentinelAPI.aiExplain({ cve_id: cveId || null, vulnerability_title: title });
+      document.getElementById("explainBody").textContent = explanation;
+    } catch (err) {
+      document.getElementById("explainBody").textContent = `Could not generate explanation: ${err.message}`;
+    }
+  }
+
+  // AI Summary modal
+  const summaryModal = document.getElementById("summaryModal");
+  document.getElementById("aiSummaryBtn").addEventListener("click", async () => {
+    document.getElementById("execSummaryBody").textContent = "Analyzing…";
+    document.getElementById("techSummaryBody").textContent = "Analyzing…";
+    summaryModal.classList.remove("hidden");
+    try {
+      const s = await SentinelAPI.aiSummary(projectId);
+      document.getElementById("execSummaryBody").textContent = s.executive_summary;
+      document.getElementById("techSummaryBody").textContent = s.technical_summary;
+    } catch (err) {
+      document.getElementById("execSummaryBody").textContent = `Error: ${err.message}`;
+      document.getElementById("techSummaryBody").textContent = "";
+    }
+  });
+
+  document.querySelectorAll("[data-close-modal]").forEach(btn => {
+    btn.addEventListener("click", () => btn.closest(".modal-backdrop").classList.add("hidden"));
+  });
+  document.querySelectorAll(".modal-backdrop").forEach(backdrop => {
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.classList.add("hidden"); });
+  });
+
+  (async function init() {
+    await loadProject();
+    await Promise.all([loadDashboard(), loadVulns(), loadHosts(), loadReports()]);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentinelX — Projects</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<style>
+  .page-wrap{ max-width: 1000px; margin: 0 auto; padding: 32px 24px 60px; }
+  .page-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom: 26px; }
+  .page-head h1{ font-size: 22px; }
+  .user-chip{ font-family: var(--font-mono); font-size:12.5px; color: var(--text-muted); display:flex; align-items:center; gap:12px; }
+  .project-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 16px; margin-top: 20px; }
+  .project-card{ cursor:pointer; transition: border-color .15s ease, transform .1s ease; }
+  .project-card:hover{ border-color: var(--signal); transform: translateY(-2px); }
+  .project-card h3{ font-size: 16px; margin-bottom: 4px; }
+  .project-card .client{ color: var(--text-muted); font-size: 12.5px; margin-bottom: 12px; }
+  .project-card .desc{ font-size: 13px; color: var(--text-muted); line-height:1.5; min-height: 40px; }
+  .project-card .meta{ margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint); }
+  .new-project-form{ display:none; margin-top: 20px; }
+  .new-project-form.visible{ display:block; }
+  .form-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  textarea{ width:100%; min-height: 70px; resize: vertical; }
+</style>
+</head>
+<body>
+<div class="console-bar">
+  <span class="prompt">sentinelx://</span><span>projects</span><span class="cursor"></span>
+</div>
+
+<div class="page-wrap">
+  <div class="page-head">
+    <div>
+      <div class="brand"><span class="dot"></span> SentinelX</div>
+    </div>
+    <div class="user-chip">
+      <span id="userLabel"></span>
+      <button id="logoutBtn">Sign out</button>
+    </div>
+  </div>
+
+  <div class="panel" style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+      <h1 style="margin-bottom:2px;">Assessment projects</h1>
+      <p style="color:var(--text-muted); font-size:13px; margin:0;">Each project holds one client engagement's imported scan data, findings, and reports.</p>
+    </div>
+    <button class="primary" id="newProjectBtn">+ New project</button>
+  </div>
+
+  <div class="panel new-project-form" id="newProjectForm">
+    <h3>New project</h3>
+    <div class="form-row">
+      <div>
+        <label style="font-size:12px; color:var(--text-muted);">Project name</label>
+        <input id="projName" placeholder="Q3 Internal Network Assessment" style="width:100%; margin-top:6px;">
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-muted);">Client name</label>
+        <input id="projClient" placeholder="Acme Corp" style="width:100%; margin-top:6px;">
+      </div>
+    </div>
+    <label style="font-size:12px; color:var(--text-muted);">Description</label>
+    <textarea id="projDesc" placeholder="Scope, objectives, notes…" style="margin-top:6px;"></textarea>
+    <div style="margin-top:14px; display:flex; gap:10px;">
+      <button class="primary" id="saveProjectBtn">Create project</button>
+      <button id="cancelProjectBtn">Cancel</button>
+    </div>
+    <div id="projError" class="error-msg hidden"></div>
+  </div>
+
+  <div id="projectGrid" class="project-grid"></div>
+  <div id="emptyState" class="empty-state hidden">
+    <h3>No projects yet</h3>
+    <p>Create your first project to import scan results and start tracking findings.</p>
+  </div>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script>
+  if (!Auth.isLoggedIn()) window.location.href = "index.html";
+
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    Auth.clear();
+    window.location.href = "index.html";
+  });
+
+  SentinelAPI.me().then(u => {
+    document.getElementById("userLabel").textContent = `${u.username} · ${u.role}`;
+  }).catch(() => {});
+
+  const newProjectForm = document.getElementById("newProjectForm");
+  document.getElementById("newProjectBtn").addEventListener("click", () => newProjectForm.classList.add("visible"));
+  document.getElementById("cancelProjectBtn").addEventListener("click", () => newProjectForm.classList.remove("visible"));
+
+  document.getElementById("saveProjectBtn").addEventListener("click", async () => {
+    const errEl = document.getElementById("projError");
+    errEl.classList.add("hidden");
+    const name = document.getElementById("projName").value.trim();
+    if (!name) { errEl.textContent = "Project name is required."; errEl.classList.remove("hidden"); return; }
+    try {
+      await SentinelAPI.createProject({
+        name,
+        client_name: document.getElementById("projClient").value.trim() || null,
+        description: document.getElementById("projDesc").value.trim() || null,
+      });
+      newProjectForm.classList.remove("visible");
+      document.getElementById("projName").value = "";
+      document.getElementById("projClient").value = "";
+      document.getElementById("projDesc").value = "";
+      loadProjects();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  });
+
+  async function loadProjects() {
+    const grid = document.getElementById("projectGrid");
+    const empty = document.getElementById("emptyState");
+    grid.innerHTML = "";
+    const projects = await SentinelAPI.listProjects();
+    if (projects.length === 0) { empty.classList.remove("hidden"); return; }
+    empty.classList.add("hidden");
+
+    for (const p of projects) {
+      const card = document.createElement("div");
+      card.className = "panel project-card";
+      card.innerHTML = `
+        <h3>${escapeHtml(p.name)}</h3>
+        <div class="client">${p.client_name ? escapeHtml(p.client_name) : "No client set"}</div>
+        <div class="desc">${p.description ? escapeHtml(p.description) : "No description."}</div>
+        <div class="meta">CREATED ${new Date(p.created_at).toLocaleDateString()}</div>
+      `;
+      card.addEventListener("click", () => {
+        window.location.href = `project.html?id=${p.id}`;
+      });
+      grid.appendChild(card);
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  loadProjects();
+</script>
+</body>
+</html>
